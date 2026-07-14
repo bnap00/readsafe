@@ -1,0 +1,9 @@
+{
+  "name": "readsafe-forcing-skill",
+  "version": "0.1.0",
+  "description": "Minimal agent instruction that routes reads and edits of sensitive files through ReadSafe so raw values stay out of model context.",
+  "targetsToolContract": "0.1",
+  "instruction": "SKILL.md",
+  "examples": "examples/app.env",
+  "homepage": "https://github.com/bnap00/readsafe"
+}

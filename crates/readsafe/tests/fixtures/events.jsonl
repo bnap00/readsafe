@@ -1,0 +1,4 @@
+{"id": 1, "user": "alice", "token": "CANARY_JSONL_5555", "meta": {"ip": "10.0.0.1"}}
+{"id": 2, "user": "bob", "token": "CANARY_JSONL_6666", "tags": ["x", "y"]}
+{"id": 3, "user": null, "token": "CANARY_JSONL_7777"}
+not even json CANARY_JSONL_BAD_LINE
