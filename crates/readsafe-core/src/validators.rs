@@ -95,8 +95,7 @@ pub fn validate(value_type: &ValueType, value: &str) -> Result<(), &'static str>
         ValueType::Semver => is_semver(value),
         ValueType::Int => value.parse::<i64>().is_ok(),
         ValueType::Bool => {
-            let lower = value.to_ascii_lowercase();
-            lower == "true" || lower == "false"
+            value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
         }
         ValueType::Enum(options) => options.iter().any(|o| o == value),
         ValueType::Regex(re) => re.is_match(value),
@@ -120,9 +119,13 @@ pub fn validate(value_type: &ValueType, value: &str) -> Result<(), &'static str>
 }
 
 fn is_semver(value: &str) -> bool {
-    let core = value.split_once('+').map(|(c, _)| c).unwrap_or(value);
+    let (core, _build) = match value.split_once('+') {
+        Some((c, build)) if suffix_is_valid(build) => (c, Some(build)),
+        Some(_) => return false,
+        None => (value, None),
+    };
     let (core, _pre) = match core.split_once('-') {
-        Some((c, pre)) if !pre.is_empty() => (c, Some(pre)),
+        Some((c, pre)) if suffix_is_valid(pre) => (c, Some(pre)),
         None => (core, None),
         _ => return false,
     };
@@ -132,6 +135,13 @@ fn is_semver(value: &str) -> bool {
             !p.is_empty()
                 && p.chars().all(|c| c.is_ascii_digit())
                 && (p.len() == 1 || !p.starts_with('0'))
+        })
+}
+
+fn suffix_is_valid(suffix: &str) -> bool {
+    !suffix.is_empty()
+        && suffix.split('.').all(|part| {
+            !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
         })
 }
 
@@ -158,6 +168,8 @@ mod tests {
         assert!(!check("uuid", "123e4567"));
         assert!(check("semver", "1.2.3"));
         assert!(check("semver", "1.2.3-rc.1+build5"));
+        assert!(!check("semver", "1.2.3-@@@+!!!"));
+        assert!(!check("semver", "1.2.3-rc..1"));
         assert!(!check("semver", "1.2"));
         assert!(!check("semver", "01.2.3"));
         assert!(check("int", "-42"));

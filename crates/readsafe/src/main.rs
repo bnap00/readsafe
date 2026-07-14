@@ -208,7 +208,9 @@ fn run(command: Command) -> (Result<i32, SafeError>, bool) {
             allow_symlink,
         } => {
             let result = match (manifest, file, schema) {
-                (Some(manifest), _, _) => inferval::validate_manifest(&manifest, json),
+                (Some(manifest), _, _) => {
+                    inferval::validate_manifest(&manifest, json, allow_symlink)
+                }
                 (None, Some(file), Some(schema)) => {
                     inferval::validate_schema(&file, &schema, json, allow_symlink)
                 }

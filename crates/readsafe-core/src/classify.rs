@@ -134,8 +134,7 @@ pub fn infer_type(key: &str, value: &str) -> (&'static str, Confidence) {
     if value.is_empty() {
         return ("string", Confidence::Low);
     }
-    let lower = value.to_ascii_lowercase();
-    if lower == "true" || lower == "false" {
+    if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false") {
         return ("bool", Confidence::High);
     }
     if let Ok(n) = value.parse::<i64>() {

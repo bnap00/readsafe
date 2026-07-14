@@ -50,6 +50,12 @@ pub fn value_from_fd(fd: i32) -> Result<String, SafeError> {
             "--value-fd must be a non-negative file descriptor number",
         ));
     }
+    if fd == 1 || fd == 2 {
+        return Err(SafeError::new(
+            ErrorCode::Usage,
+            "--value-fd must not be stdout or stderr",
+        ));
+    }
     // Safety: the descriptor is provided by the caller and expected to be a
     // readable inherited fd. Taking ownership closes it on drop, which is the
     // intended lifetime for a one-shot secret hand-off.

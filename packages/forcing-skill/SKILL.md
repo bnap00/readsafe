@@ -32,14 +32,14 @@ Narrow dotenv edits — always dry-run first, and pass new values through stdin
 or an inherited file descriptor, never as an argument:
 
 ```bash
-printf '%s' "$NEW_VALUE" | readsafe env set app.env API_TOKEN --value-from-stdin --dry-run --json
-printf '%s' "$NEW_VALUE" | readsafe env set app.env API_TOKEN --value-from-stdin --json
+printf '%s' "$NEW_VALUE" | readsafe env set examples/app.env API_TOKEN --value-from-stdin --dry-run --json
+printf '%s' "$NEW_VALUE" | readsafe env set examples/app.env API_TOKEN --value-from-stdin --json
 
 # Or hand off a secret via a file descriptor (Unix), keeping it out of argv:
-readsafe env set app.env API_TOKEN --value-fd 3 --json  3<secret.txt
+readsafe env set examples/app.env API_TOKEN --value-fd 3 --json  3<secret.txt
 
-readsafe env remove app.env OLD_KEY --dry-run --json
-readsafe env rename app.env OLD_KEY NEW_KEY --dry-run --json
+readsafe env remove examples/app.env OLD_KEY --dry-run --json
+readsafe env rename examples/app.env OLD_KEY NEW_KEY --dry-run --json
 readsafe env test examples/app.env SUPPORT_EMAIL --type email --json
 ```
 

@@ -381,8 +381,10 @@ fn parse_quoted(
 ) -> Option<(String, Quote, String, usize)> {
     let mut buf = first.to_string();
     let mut consumed = 1;
+    let mut scan_from = 0;
+    let mut escaped = false;
     loop {
-        if let Some(close) = find_close(&buf, quote_char) {
+        if let Some(close) = find_close(&buf, quote_char, &mut scan_from, &mut escaped) {
             let value_raw = &buf[..close];
             let remainder = &buf[close + quote_char.len_utf8()..];
             let rem_trimmed = remainder.trim_start();
@@ -416,21 +418,27 @@ fn parse_quoted(
     }
 }
 
-fn find_close(s: &str, quote_char: char) -> Option<usize> {
-    let mut escaped = false;
-    for (idx, c) in s.char_indices() {
-        if escaped {
-            escaped = false;
+fn find_close(
+    s: &str,
+    quote_char: char,
+    scan_from: &mut usize,
+    escaped: &mut bool,
+) -> Option<usize> {
+    for (offset, c) in s[*scan_from..].char_indices() {
+        let idx = *scan_from + offset;
+        if *escaped {
+            *escaped = false;
             continue;
         }
         if quote_char == '"' && c == '\\' {
-            escaped = true;
+            *escaped = true;
             continue;
         }
         if c == quote_char {
             return Some(idx);
         }
     }
+    *scan_from = s.len();
     None
 }
 

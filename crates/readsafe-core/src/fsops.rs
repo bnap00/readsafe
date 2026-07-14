@@ -6,7 +6,7 @@
 
 use crate::error::{ErrorCode, SafeError};
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 
 fn check_symlink(path: &Path, allow_symlink: bool) -> Result<(), SafeError> {
@@ -29,13 +29,45 @@ fn check_symlink(path: &Path, allow_symlink: bool) -> Result<(), SafeError> {
 pub fn read_text(path: &Path, allow_symlink: bool) -> Result<String, SafeError> {
     check_symlink(path, allow_symlink)?;
     let display = path.display().to_string();
-    let bytes = fs::read(path).map_err(|e| {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    if !allow_symlink {
+        use std::os::unix::fs::OpenOptionsExt;
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        const O_NOFOLLOW_FLAG: i32 = 0o400000;
+        #[cfg(any(
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "freebsd",
+            target_os = "openbsd",
+            target_os = "netbsd",
+            target_os = "dragonfly"
+        ))]
+        const O_NOFOLLOW_FLAG: i32 = 0x00000100;
+        #[cfg(any(
+            target_os = "linux",
+            target_os = "android",
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "freebsd",
+            target_os = "openbsd",
+            target_os = "netbsd",
+            target_os = "dragonfly"
+        ))]
+        options.custom_flags(O_NOFOLLOW_FLAG);
+    }
+    let mut file = options.open(path).map_err(|e| {
         let (code, reason) = match e.kind() {
             std::io::ErrorKind::NotFound => (ErrorCode::FileNotFound, "file not found"),
             std::io::ErrorKind::PermissionDenied => (ErrorCode::FileIo, "permission denied"),
             _ => (ErrorCode::FileIo, "file could not be read"),
         };
         SafeError::new(code, reason).with_path(display.clone())
+    })?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).map_err(|_| {
+        SafeError::new(ErrorCode::FileIo, "file could not be read").with_path(display.clone())
     })?;
     String::from_utf8(bytes).map_err(|_| {
         SafeError::new(ErrorCode::FileNotUtf8, "file is not valid UTF-8").with_path(display)

@@ -56,12 +56,7 @@ fn readsafe(args: &[&str], stdin: Option<&str>, cwd: Option<&Path>) -> Run {
     let mut child = cmd.spawn().expect("failed to run readsafe");
     if let Some(input) = stdin {
         use std::io::Write;
-        child
-            .stdin
-            .as_mut()
-            .unwrap()
-            .write_all(input.as_bytes())
-            .unwrap();
+        let _ = child.stdin.as_mut().unwrap().write_all(input.as_bytes());
     }
     drop(child.stdin.take());
     let output = child.wait_with_output().unwrap();
@@ -562,6 +557,9 @@ fn infer_emits_safe_schema_only() {
         "default",
         "minLength",
         "maxLength",
+        "minimum",
+        "maximum",
+        "format",
         "pattern",
     ] {
         assert!(

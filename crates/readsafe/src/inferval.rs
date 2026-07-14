@@ -65,10 +65,12 @@ pub fn infer(
 
     match schema_out {
         Some(out_path) => {
-            std::fs::write(out_path, format!("{rendered}\n")).map_err(|_| {
-                SafeError::new(ErrorCode::FileIo, "could not write schema file")
-                    .with_path(display_path(out_path))
-            })?;
+            fsops::atomic_write(out_path, &format!("{rendered}\n"), allow_symlink).map_err(
+                |_| {
+                    SafeError::new(ErrorCode::FileIo, "could not write schema file")
+                        .with_path(display_path(out_path))
+                },
+            )?;
             let mut operation = Operation::new("infer", display_path(path));
             operation.schema_out = Some(display_path(out_path));
             operation.scan = scan;
@@ -241,8 +243,12 @@ fn schema_types(schema_map: &serde_json::Map<String, Value>) -> Option<Vec<Strin
 
 /// Compare dotenv files against a previously generated manifest. Reports
 /// structural drift only; values are never read into the report.
-pub fn validate_manifest(manifest_path: &Path, json_output: bool) -> Result<i32, SafeError> {
-    let text = fsops::read_text(manifest_path, false)?;
+pub fn validate_manifest(
+    manifest_path: &Path,
+    json_output: bool,
+    allow_symlink: bool,
+) -> Result<i32, SafeError> {
+    let text = fsops::read_text(manifest_path, allow_symlink)?;
     let manifest: Manifest = serde_json::from_str(&text).map_err(|_| {
         SafeError::new(
             ErrorCode::ManifestInvalid,
@@ -260,8 +266,8 @@ pub fn validate_manifest(manifest_path: &Path, json_output: bool) -> Result<i32,
             continue;
         };
         let path = Path::new(&file.path);
-        let current = match fsops::read_text(path, false) {
-            Ok(text) => dotenv_entry(path, &text),
+        let current = match fsops::read_text(path, allow_symlink) {
+            Ok(text) => dotenv_entry(path, &text)?,
             Err(_) => {
                 drift.push(Drift {
                     path: file.path.clone(),

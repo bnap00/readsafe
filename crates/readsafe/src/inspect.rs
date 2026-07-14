@@ -6,7 +6,7 @@ use readsafe_core::error::{ErrorCode, SafeError};
 use readsafe_core::fsops;
 use readsafe_core::jsonish;
 use readsafe_core::manifest::{FileEntry, Manifest, Variable};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +63,7 @@ fn expand(paths: &[PathBuf]) -> Result<Vec<(PathBuf, Kind)>, SafeError> {
     let mut out = Vec::new();
     for path in paths {
         if path.is_dir() {
-            walk(path, &mut out);
+            walk(path, &mut out)?;
         } else {
             match file_kind(path) {
                 Some(kind) => out.push((path.clone(), kind)),
@@ -82,22 +82,31 @@ fn expand(paths: &[PathBuf]) -> Result<Vec<(PathBuf, Kind)>, SafeError> {
     Ok(out)
 }
 
-fn walk(dir: &Path, out: &mut Vec<(PathBuf, Kind)>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let mut entries: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
+fn walk(dir: &Path, out: &mut Vec<(PathBuf, Kind)>) -> Result<(), SafeError> {
+    let entries = std::fs::read_dir(dir).map_err(|_| {
+        SafeError::new(ErrorCode::FileIo, "directory could not be read")
+            .with_path(display_path(dir))
+    })?;
+    let mut entries: Vec<PathBuf> = entries
+        .map(|entry| {
+            entry.map(|entry| entry.path()).map_err(|_| {
+                SafeError::new(ErrorCode::FileIo, "directory entry could not be read")
+                    .with_path(display_path(dir))
+            })
+        })
+        .collect::<Result<_, _>>()?;
     entries.sort();
     for entry in entries {
         if entry.is_dir() {
             let name = entry.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if !SKIP_DIRS.contains(&name) && !name.starts_with('.') {
-                walk(&entry, out);
+                walk(&entry, out)?;
             }
         } else if matches!(file_kind(&entry), Some(Kind::Dotenv)) {
             out.push((entry, Kind::Dotenv));
         }
     }
+    Ok(())
 }
 
 /// Keys listed in a sibling `.env.example`, used as the `required` signal.
@@ -116,9 +125,22 @@ fn example_keys(path: &Path) -> Option<HashSet<String>> {
     )
 }
 
-pub fn dotenv_entry(path: &Path, text: &str) -> FileEntry {
+pub fn dotenv_entry(path: &Path, text: &str) -> Result<FileEntry, SafeError> {
     let doc = Document::parse(text);
     let required_keys = example_keys(path);
+    let mut seen = HashMap::new();
+    for entry in doc.entries() {
+        let count = seen.entry(&entry.key).or_insert(0usize);
+        *count += 1;
+        if *count > 1 {
+            return Err(SafeError::new(
+                ErrorCode::EnvDuplicateKey,
+                "key appears more than once; refusing ambiguous operation",
+            )
+            .with_path(display_path(path))
+            .with_key(entry.key.clone()));
+        }
+    }
     let mut variables: Vec<Variable> = doc
         .entries()
         .map(|entry| {
@@ -148,9 +170,8 @@ pub fn dotenv_entry(path: &Path, text: &str) -> FileEntry {
         })
         .collect();
     variables.sort_by(|a, b| a.name.cmp(&b.name));
-    variables.dedup_by(|a, b| a.name == b.name);
     let malformed = doc.malformed_count() as u64;
-    FileEntry {
+    Ok(FileEntry {
         path: display_path(path),
         kind: "dotenv".to_string(),
         experimental: None,
@@ -159,7 +180,7 @@ pub fn dotenv_entry(path: &Path, text: &str) -> FileEntry {
         structure: None,
         scan: None,
         value_exposed: false,
-    }
+    })
 }
 
 fn json_entry(path: &Path, text: &str, kind: Kind) -> Result<FileEntry, SafeError> {
@@ -194,7 +215,7 @@ pub fn build_manifest(paths: &[PathBuf], allow_symlink: bool) -> Result<Manifest
     for (path, kind) in expand(paths)? {
         let text = fsops::read_text(&path, allow_symlink)?;
         let entry = match kind {
-            Kind::Dotenv => dotenv_entry(&path, &text),
+            Kind::Dotenv => dotenv_entry(&path, &text)?,
             Kind::Json | Kind::Jsonl => json_entry(&path, &text, kind)?,
         };
         files.push(entry);
@@ -212,10 +233,12 @@ pub fn run(
     let rendered = serde_json::to_string_pretty(&manifest).unwrap();
     match out {
         Some(out_path) => {
-            std::fs::write(out_path, format!("{rendered}\n")).map_err(|_| {
-                SafeError::new(ErrorCode::FileIo, "could not write manifest file")
-                    .with_path(display_path(out_path))
-            })?;
+            fsops::atomic_write(out_path, &format!("{rendered}\n"), allow_symlink).map_err(
+                |_| {
+                    SafeError::new(ErrorCode::FileIo, "could not write manifest file")
+                        .with_path(display_path(out_path))
+                },
+            )?;
             if !json {
                 println!(
                     "manifest written to {} [values not shown]",
