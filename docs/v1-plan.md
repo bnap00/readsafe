@@ -11,10 +11,10 @@ This document turns the [vision](vision.md), [security model](security-model.md)
 | M2 classification + redaction | Done — fail-closed classifier, `&'static str` error reasons, comments withheld with `descriptionRedacted`. |
 | M3 `inspect` for dotenv | Done — canonical 0.1 manifest, deterministic output, `.env.example`-based `required`. |
 | M4 narrow update engine | Done — set/remove/rename/test, dry runs, atomic writes, symlink policy, exit codes frozen. Value input supports stdin and `--value-fd` (inherited descriptor, Unix). The hidden interactive prompt is dropped from v1 scope: it needs a terminal dependency and agents never use it; stdin/fd cover the agent and parent-process cases. |
-| M5 hardening gate | Mostly done — canary non-disclosure suite across stdout/stderr/manifests/schemas, panic-hook redaction, and `cargo-fuzz` targets (dotenv round-trip + safe-schema subset) with a scheduled CI job are all in. Remaining: the exit criterion's one week of scheduled fuzzing with no leak-class findings (time-gated, runs after merge). |
+| M5 hardening gate | Mostly done — canary non-disclosure suite across stdout/stderr/manifests/schemas, panic-hook redaction, and `cargo-fuzz` targets (dotenv round-trip + safe-schema subset) with a scheduled CI job are all in. Remaining: the exit criterion's one week of scheduled fuzzing with no leak-class findings — the daily cron is now enabled in `fuzz.yml` (1800s/target); the clock starts when this lands on `main`. |
 | M6 JSON/JSONL inference | Done as experimental — safe schema subset with denylist test, sampling semantics, `x-readsafe` metadata. |
 | M7 validate + skill packaging | Done — `validate --manifest` drift detection, `validate <file> --schema` structural conformance, the distributable `packages/forcing-skill/` with CI-verified examples, and the flagship end-to-end agent-workflow transcript test are all in. |
-| M8 release engineering | Not started. License decided (MIT — `LICENSE`, applied to both crates). Remaining decisions: signing mechanism (minisign vs Sigstore); then `cargo publish` and the npm wrapper. |
+| M8 release engineering | In progress — license decided (MIT), signing decided (Sigstore, keyless via CI OIDC), and tag-driven `release.yml` added (5-target build, SHA256SUMS, Sigstore keyless signing, audit snapshot, `-rc` prereleases). Remaining: first tagged release, `cargo publish`, and the npm wrapper. |
 
 ## Definition of done for v1
 
@@ -145,7 +145,7 @@ Exit criterion: the end-to-end agent-workflow test passes and is the flagship CI
 Deliverables:
 
 - Reproducible-as-practical release builds for Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x86_64).
-- GitHub Releases with signed artifacts and checksums (minisign or Sigstore — decide during M8); `cargo publish` for `readsafe` and `readsafe-core`.
+- GitHub Releases with signed artifacts and checksums (Sigstore, keyless via GitHub Actions OIDC); `cargo publish` for `readsafe` and `readsafe-core`.
 - Thin `@readsafe/cli` npm wrapper that downloads the pinned, checksum-verified binary at install time from GitHub Releases only — no post-install arbitrary code download beyond that verified fetch, per the supply-chain posture.
 - Dependency audit snapshot published with the release (tree size, `cargo audit`/`cargo deny` reports).
 - README rewritten from "planned" to actual installation and usage docs; license chosen and applied (decide between MIT and Apache-2.0/MIT dual before tagging — required before any release, see open decisions).
@@ -176,7 +176,7 @@ Exit criterion: a clean machine can install via GitHub Releases and via npm, ver
 | Decision | Resolve by | Notes |
 | --- | --- | --- |
 | ~~License (MIT vs Apache-2.0/MIT dual)~~ | Resolved | **MIT** — `LICENSE` at repo root, applied to both crates via `license.workspace`. |
-| Signing mechanism (minisign vs Sigstore) | M8 | Sigstore avoids key custody; minisign is simpler to verify offline. |
+| ~~Signing mechanism (minisign vs Sigstore)~~ | Resolved | **Sigstore** — keyless signing via GitHub Actions OIDC (`cosign sign-blob`); avoids key custody. |
 | `required` semantics for dotenv variables | M3 | Inference source (e.g. `.env.example` cross-reference) vs always `source: "inferred", confidence: "low"`. |
 | Duplicate-key `env test` behavior | M4 | Contract says refuse ambiguous operations; confirm `test` counts as ambiguous. |
 | Experimental-marker field name for JSON/JSONL | M6 | Must be additive within schema `0.1`. |

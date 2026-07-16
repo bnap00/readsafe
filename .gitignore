@@ -7,3 +7,6 @@
 /fuzz/artifacts
 /fuzz/coverage
 /fuzz/Cargo.lock
+
+# Local Superpowers planning artifacts.
+/docs/superpowers/

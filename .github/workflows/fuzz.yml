@@ -1,0 +1,51 @@
+name: Fuzz
+
+# The security model requires fuzzing the format parsers and the redaction
+# paths. These targets run on a schedule (and can be kicked off by hand) rather
+# than on every PR, since each run is time-boxed minutes rather than seconds.
+on:
+  schedule:
+    # Daily at 04:17 UTC. Scheduled runs use the longer 1800s time box below;
+    # cron only fires on the default branch.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      max_total_time:
+        description: "Seconds to run each fuzz target"
+        required: false
+        default: "300"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [dotenv_roundtrip, jsonish_safe_subset]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Run ${{ matrix.target }}
+        run: |
+          cargo fuzz run ${{ matrix.target }} -- \
+            -max_total_time=${{ github.event.inputs.max_total_time || '1800' }} \
+            -print_final_stats=1
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
