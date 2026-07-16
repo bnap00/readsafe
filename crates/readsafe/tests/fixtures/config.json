@@ -1,0 +1,5 @@
+{
+  "service": {"name": "demo", "apiKey": "CANARY_JSON_8888"},
+  "ports": [8080, 8443],
+  "debug": false
+}

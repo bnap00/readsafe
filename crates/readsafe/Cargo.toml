@@ -1,0 +1,17 @@
+[package]
+name = "readsafe"
+description = "Local-first CLI that gives agents redacted structure metadata instead of raw values"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "readsafe"
+path = "src/main.rs"
+
+[dependencies]
+readsafe-core = { path = "../readsafe-core" }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

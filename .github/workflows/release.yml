@@ -1,0 +1,174 @@
+name: Release
+
+# vX.Y.Z tags publish a stable release; tags containing "-" (e.g. v0.1.0-rc.1)
+# publish a prerelease. workflow_dispatch is a dry run: it builds every
+# artifact but publishes nothing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Gate (tests + version check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test
+      - name: Tag matches workspace version
+        if: github.event_name == 'push'
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          tag_version="${tag_version%%-*}"
+          cargo_version="$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "readsafe") | .version')"
+          if [ "${tag_version}" != "${cargo_version}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} (base version ${tag_version}) does not match Cargo.toml version ${cargo_version}" >&2
+            exit 1
+          fi
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build
+        run: cargo build --release --locked -p readsafe --target ${{ matrix.target }}
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="dryrun"
+          fi
+          name="readsafe-${version}-${{ matrix.target }}"
+          mkdir -p "dist/${name}"
+          cp "target/${{ matrix.target }}/release/readsafe" LICENSE README.md "dist/${name}/"
+          tar -C dist -czf "${name}.tar.gz" "${name}"
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq "push") {
+            $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          } else {
+            $version = "dryrun"
+          }
+          $name = "readsafe-$version-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path "dist/$name" | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/readsafe.exe", "LICENSE", "README.md" "dist/$name/"
+          Compress-Archive -Path "dist/$name" -DestinationPath "$name.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.target }}
+          path: |
+            readsafe-*.tar.gz
+            readsafe-*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [gate, build]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: archive-*
+          path: dist
+          merge-multiple: true
+      - name: Generate SHA256SUMS
+        run: |
+          cd dist
+          sha256sum readsafe-* > SHA256SUMS
+          cat SHA256SUMS
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign artifacts (Sigstore keyless)
+        run: |
+          for f in dist/readsafe-* dist/SHA256SUMS; do
+            cosign sign-blob --yes --bundle "${f}.sigstore.json" "${f}"
+          done
+      - name: Dependency audit snapshot
+        # Explicit `shell: bash` turns on pipefail, so a failing `cargo audit`
+        # fails the release instead of being masked by `tee`.
+        shell: bash
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit | tee dist/audit-report.txt
+      - name: Write release notes
+        run: |
+          {
+            echo "## Verify downloads"
+            echo
+            echo '```sh'
+            echo "sha256sum -c SHA256SUMS"
+            echo "cosign verify-blob <file> \\"
+            echo "  --bundle <file>.sigstore.json \\"
+            echo "  --certificate-identity-regexp 'github.com/${GITHUB_REPOSITORY}' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo '```'
+            echo
+            echo "Each artifact is signed keylessly via Sigstore by this repository's release workflow."
+            echo "A dependency audit snapshot (audit-report.txt) is attached."
+          } > notes.md
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "${GITHUB_REF_NAME}" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --verify-tag \
+            --title "readsafe ${GITHUB_REF_NAME}" \
+            --notes-file notes.md \
+            ${prerelease}

@@ -1,0 +1,12 @@
+/target
+**/*.rs.bk
+
+# cargo-fuzz build output and generated corpora/crashes.
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/coverage
+/fuzz/Cargo.lock
+
+# Local Superpowers planning artifacts.
+/docs/superpowers/

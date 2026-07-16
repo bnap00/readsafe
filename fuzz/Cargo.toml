@@ -1,0 +1,30 @@
+[package]
+name = "readsafe-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+readsafe-core = { path = "../crates/readsafe-core" }
+serde_json = "1"
+
+[[bin]]
+name = "dotenv_roundtrip"
+path = "fuzz_targets/dotenv_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jsonish_safe_subset"
+path = "fuzz_targets/jsonish_safe_subset.rs"
+test = false
+doc = false
+bench = false
+
+[profile.release]
+debug = 1

@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["crates/readsafe-core", "crates/readsafe"]
+# The fuzz crate has its own toolchain requirements (nightly + libfuzzer) and
+# is built only by `cargo fuzz`, never by a normal workspace build.
+exclude = ["fuzz"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/bnap00/readsafe"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex-lite = "0.1"
+clap = { version = "4", features = ["derive"] }
