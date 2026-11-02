@@ -36,5 +36,16 @@ Out of scope (documented boundaries, see `docs/security-model.md`):
 ## Supply chain
 
 ReadSafe has no telemetry and performs no network access at runtime.
-Dependencies are kept minimal and locked; the dependency tree is audited
-in CI.
+Dependencies are kept minimal and locked (`Cargo.lock` is committed and CI
+builds with `--locked`). Every pull request, every push to `main`, and a
+weekly scheduled run check the dependency tree with `cargo audit` (RustSec)
+and OSV-Scanner, scan git history with Gitleaks, and run CodeQL. Dependabot
+alerts and security updates are enabled, and weekly grouped Dependabot
+version updates (with a three-day cooldown) cover Cargo and GitHub Actions.
+Every GitHub Action is pinned to a full commit SHA, and workflows default
+to read-only `contents` permission.
+
+## Supported versions
+
+ReadSafe is pre-release. Fixes land on `main` and in the next release;
+only the latest release receives security fixes.
