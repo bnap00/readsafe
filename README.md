@@ -138,6 +138,15 @@ Possible release channels include GitHub Releases, Cargo, Homebrew, a thin `@rea
 
 The project is currently defining its threat model, CLI contract, test fixtures, and MVP boundary. Contributions should prioritize a small auditable dependency tree, deterministic output, explicit redaction rules, and tests for accidental disclosure.
 
+Install the [pre-commit](https://pre-commit.com/) hooks before your first commit so [Gitleaks](https://github.com/gitleaks/gitleaks) scans staged changes for secrets:
+
+```bash
+pipx install pre-commit   # or: pip install pre-commit
+pre-commit install
+```
+
+CI runs the same Gitleaks scan, plus `cargo audit` and OSV-Scanner against `Cargo.lock`, on every pull request. To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
 ## License
 
 [MIT](LICENSE).
